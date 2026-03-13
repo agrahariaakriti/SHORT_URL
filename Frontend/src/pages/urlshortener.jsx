@@ -25,8 +25,14 @@ const Shortener = () => {
         err?.response?.data?.msg ||
         err?.response?.data?.error ||
         "Something went wrong";
-
-      setError(message);
+      console.log("Message in shorten handler is ", message);
+      if (message == "Unauthorized" || message == "Token Expired") {
+        const res = await api.get("/user/refresh");
+        if (res.data.msg == "Invalid Refresh Token") navigate("/signin");
+        else handleShorten(e);
+      } else {
+        setError(message);
+      }
     }
   };
 
@@ -44,11 +50,17 @@ const Shortener = () => {
       setError("");
     } catch (err) {
       const message =
-        err?.response?.data?.message ||
+        err?.response?.data?.msg ||
         err?.response?.data?.error ||
-        "Redirect failed";
-
-      setError(message);
+        "Something went wrong";
+      console.log("Message in shorten handler is ", message);
+      if (message == "Unauthorized" || message == "Token Expired") {
+        const res = await api.get("/user/refresh");
+        if (res.data.msg == "Invalid Refresh Token") navigate("/signin");
+        else handleShorten(e);
+      } else {
+        setError(message);
+      }
     }
   };
 

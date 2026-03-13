@@ -2,11 +2,11 @@ import {
   create_user_srv,
   find_user_srv,
   user_logout_srv,
+  refresh_handler_srv,
 } from "../services/user.service.js";
 
 export const signup = async (req, res) => {
   try {
-
     const { username, fullname, email, password } = req.body;
     if (!username || !fullname || !email || !password) {
       return res.status(400).json({ msg: "All fields are required" });
@@ -18,7 +18,6 @@ export const signup = async (req, res) => {
       user: result,
     });
   } catch (error) {
-
     return res
       .status(error.statusCode || 500)
       .json({ msg: error.message || "Internal Server Error" });
@@ -46,7 +45,6 @@ export const signin = async (req, res) => {
       .cookie("refreshToken", user.refreshToken, option)
       .json({ msg: "Uer Signin successfully", user });
   } catch (error) {
-
     return res
       .status(error.statusCode || 500)
       .json({ msg: error.message || "Internal Server Error" });
@@ -61,7 +59,8 @@ export const logout = async (req, res) => {
       sameSite: "lax",
       path: "/",
     };
-    await user_logout_srv(req.user);
+
+    await user_logout_srv(req.cookies.refreshToken);
     return res
       .clearCookie("accessToken", options)
       .json({ msg: "User loggout SuccessFully" });
@@ -79,7 +78,6 @@ export const refresh = async (req, res) => {
       return res.status(401).json({ msg: "Unauthorized No Token Found" });
     }
     const accessToken = await refresh_handler_srv(refreshToken);
-
     return res
       .cookie("accessToken", accessToken, {
         httpOnly: true,
@@ -88,7 +86,7 @@ export const refresh = async (req, res) => {
       })
       .json({
         msg: "Token refreshed successfully",
-        accessToken: result,
+        accessToken: accessToken,
       });
   } catch (error) {
     return res

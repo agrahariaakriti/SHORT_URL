@@ -1,6 +1,7 @@
 import {
   craete_shorturl_srv,
   get_longul_srv,
+  get_clicks_srv,
 } from "../services/url.service.js";
 
 export const create_short_url = async (req, res) => {
@@ -34,4 +35,15 @@ export const redirect_url = async (req, res) => {
   }
 };
 
-export const click_tracker = async (req, res) => {};
+export const click_tracker = async (req, res) => {
+  try {
+    const code = req.params.code;
+
+    const all_count = await get_clicks_srv(code);
+    return res
+      .status(200)
+      .json({ msg: "Click count retrieved successfully", count: all_count });
+  } catch (error) {
+    return res.status(500).json({ msg: "Internal Server Error" });
+  }
+};

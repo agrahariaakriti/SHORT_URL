@@ -18,4 +18,4 @@ urlroute.get(
   redirect_url,
 );
 
-urlroute.get("/clicks", tokenvarify_middleware, click_tracker);
+urlroute.get("/clicks/:code", tokenvarify_middleware, click_tracker);

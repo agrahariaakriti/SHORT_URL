@@ -2,7 +2,6 @@ import { User } from "../model/user.model.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
-
 export const validate_email = (email) => {
   const reg = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/;
   return reg.test(email);
@@ -22,7 +21,6 @@ export const find_user_by_email = async (email) => {
   const user = await User.findOne({ email }).select(
     "-hashPassword -refreshToken",
   );
-  console.log("Here in SERVICE....", user);
 
   return user;
 };
@@ -126,11 +124,8 @@ export const find_user_srv = async (email, password) => {
   };
 };
 
-export const user_logout_srv = async (user) => {
-  await User.findByIdAndUpdate(user.userId, {
-    refreshToken: null,
-  });
-  return;
+export const user_logout_srv = async (refreshToken) => {
+  await User.findOneAndUpdate({ refreshToken }, { refreshToken: null });
 };
 
 export const refresh_handler_srv = async (refreshToken) => {
@@ -139,40 +134,38 @@ export const refresh_handler_srv = async (refreshToken) => {
       refreshToken,
       process.env.JWT_REFRESH_TOKEN_SECRET,
     );
+    if (!decoded) {
+      const error = new Error("Invalid Refresh Token");
+      error.statusCode = 401;
+      throw error;
+    }
+
+    const user = await User.findById(decoded.userId);
+
+    if (!user || !user.refreshToken) {
+      const error = new Error("Invalid User");
+      error.statusCode = 401;
+      throw error;
+    }
+    const isMatch = bcrypt.compareSync(refreshToken, user.refreshToken);
+    if (!isMatch) {
+      const error = new Error("Invalid Refresh Token");
+      error.statusCode = 401;
+      throw error;
+    }
+    const accessToken = jwt.sign(
+      {
+        email: user.email,
+        username: user.username,
+        userId: user._id,
+      },
+      process.env.JWT_ACCESS_TOKEN_SECRET,
+      { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN },
+    );
+    return accessToken;
   } catch (error) {
-    const err = new Error("Invalid Refresh Token Redirect to login page");
+    const err = new Error("Invalid Refresh Token ");
     err.statusCode = 401;
     throw err;
   }
-
-  if (!decoded) {
-    const error = new Error("Invalid Refresh Token");
-    error.statusCode = 401;
-    throw error;
-  }
-
-  const user = await User.findById(decoded.userId);
-
-  if (!user || !user.refreshToken) {
-    const error = new Error("Invalid User");
-    error.statusCode = 401;
-    throw error;
-  }
-  const isMatch = bcrypt.compareSync(refreshToken, user.refreshToken);
-
-  if (!isMatch) {
-    const error = new Error("Invalid Refresh Token");
-    error.statusCode = 401;
-    throw error;
-  }
-  const accessToken = jwt.sign(
-    {
-      email: user.email,
-      username: user.username,
-      userId: user._id,
-    },
-    process.env.JWT_ACCESS_TOKEN_SECRET,
-    { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN },
-  );
-  return accessToken;
 };

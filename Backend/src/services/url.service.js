@@ -1,6 +1,9 @@
 import crypto from "crypto";
 import { Url } from "../model/url.model.js";
 import { redisClient } from "../config/redis_client.js";
+import cron from "node-cron";
+
+/* ------------------ URL VALIDATION ------------------ */
 
 const validate_url_srv = (url) => {
   try {
@@ -11,6 +14,8 @@ const validate_url_srv = (url) => {
   }
 };
 
+/* ------------------ CODE GENERATOR ------------------ */
+
 const generateCode = (length) => {
   return crypto
     .randomBytes(Math.ceil((length * 3) / 4))
@@ -18,9 +23,9 @@ const generateCode = (length) => {
     .slice(0, length);
 };
 
-export const craete_shorturl_srv = async (url) => {
-  console.log("In the  service  urls....");
+/* ------------------ CREATE SHORT URL ------------------ */
 
+export const craete_shorturl_srv = async (url) => {
   const validate_url = validate_url_srv(url);
 
   if (!validate_url) {
@@ -33,28 +38,27 @@ export const craete_shorturl_srv = async (url) => {
   if (check_url_db) {
     return check_url_db.shorturl;
   }
+
   const MAX_RETRIES = 5;
+
   for (let i = 0; i < MAX_RETRIES; i++) {
     try {
       const code = generateCode(6);
       const shorturl = `${process.env.BASE_URL}/${code}`;
-      console.log("IN the generate the code...");
 
       const create_short_url = await Url.create({
         longurl: url,
         shortCode: code,
         shorturl,
       });
-      console.log("SET IN THE REDIS");
-      redisClient.on("connect", () => {
-        console.log("Redis connected");
-      });
 
-      redisClient.on("error", (err) => {
-        console.log("Redis error:", err);
-      });
-      await redisClient.set(`url:${code}`, url, "EX", 86400);
-      await redisClient.hset("click_count", code, 0);
+      /* Redis cache (safe execution) */
+      try {
+        await redisClient.set(`url:${code}`, url, "EX", 86400);
+        await redisClient.hset("click_count", code, 0);
+      } catch (redisErr) {
+        console.error("Redis cache error:", redisErr.message);
+      }
 
       return create_short_url.shorturl;
     } catch (error) {
@@ -62,60 +66,105 @@ export const craete_shorturl_srv = async (url) => {
       throw error;
     }
   }
-  throw new Error(
-    "Failed to generate unique short code after multiple attempts",
-  );
+
+  throw new Error("Failed to generate unique short code");
 };
+
+/* ------------------ GET LONG URL ------------------ */
 
 export const get_longul_srv = async (code) => {
-  console.log("Here in get long url service", typeof code);
-  const redis_search_code = await redisClient.get(`url:${code}`);
-  console.log("Here in the redis search code", redis_search_code);
-  if (redis_search_code != null) {
-    const redis_click_counter = await redisClient.hincrby(
-      "click_count",
-      code,
-      1,
-    );
-    console.log("Here in the redis click counter", redis_click_counter);
-    return redis_search_code;
-  } else {
-    console.log("Here in the DB search code");
-    const url_detail = await Url.findOne({ shortCode: code });
-    if (!url_detail) {
-      const error = new Error("URL NOT FOUND");
-      error.statusCode = 400;
-      throw error;
+  try {
+    const redisUrl = await redisClient.get(`url:${code}`);
+
+    if (redisUrl) {
+      try {
+        const res = await redisClient.hincrby("click_count", code, 1);
+      } catch (err) {
+        console.error("Redis increment error:", err.message);
+      }
+
+      return redisUrl;
     }
-    await redisClient.set(`url:${code}`, url_detail.longurl, { EX: 86400 });
+  } catch (err) {
+    console.error("Redis read error:", err.message);
+  }
+
+  /* Fallback to MongoDB */
+  const url_detail = await Url.findOne({ shortCode: code });
+
+  if (!url_detail) {
+    const error = new Error("URL NOT FOUND");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  try {
+    await redisClient.set(`url:${code}`, url_detail.longurl, "EX", 86400);
     await redisClient.hincrby("click_count", code, 1);
-    console.log("Here in the db click counter", url_detail.click_count);
-    return url_detail.longurl;
+  } catch (redisErr) {
+    console.error("Redis fallback error:", redisErr.message);
+  }
+
+  return url_detail.longurl;
+};
+
+/* ------------------ GET CLICK COUNT ------------------ */
+
+export const get_clicks_srv = async (code) => {
+  try {
+    const url = await Url.findOne({ shortCode: code }).select("click_count");
+
+    let redisClicks = 0;
+
+    try {
+      const redisVal = await redisClient.hget("click_count", code);
+      redisClicks = parseInt(redisVal) || 0;
+    } catch (redisErr) {
+      console.error("Redis fetch error:", redisErr.message);
+    }
+
+    const totalClicks = (url?.click_count || 0) + redisClicks;
+
+    return totalClicks;
+  } catch (error) {
+    console.error("Click count error:", error);
+    throw error;
   }
 };
 
-import cron from "node-cron";
+/* ------------------ CRON JOB ------------------ */
+/* Persist Redis click counts to MongoDB every 3 minutes */
 
-// This pattern is know as catch aside
-cron.schedule("*/30 * * * * *", async () => {
-  console.log("Running cron job to update clicks on the urls...");
-  const all_counts = await redisClient.hgetall("click_count");
-  const operation = [];
-  for (const code in all_counts) {
-    const count = all_counts[code];
-    if (Number(count) > 0) {
-      operation.push({
-        updateOne: {
-          filter: { shortCode: code },
-          update: {
-            $inc: { click_count: Number(count) },
-          },
-        },
-      });
+cron.schedule("*/3 * * * *", async () => {
+  try {
+    console.log("Running click sync cron job...");
+
+    const all_counts = await redisClient.hgetall("click_count");
+    if (!all_counts || Object.keys(all_counts).length === 0) {
+      return;
     }
+
+    const operations = [];
+
+    for (const code in all_counts) {
+      const count = Number(all_counts[code]);
+
+      if (count > 0) {
+        operations.push({
+          updateOne: {
+            filter: { shortCode: code },
+            update: { $inc: { click_count: count } },
+          },
+        });
+      }
+    }
+
+    if (operations.length > 0) {
+      await Url.bulkWrite(operations);
+    }
+
+    await redisClient.del("click_count");
+  } catch (error) {
+    console.error("Cron job failed:", error);
   }
-  if (operation.length > 0) {
-    await Url.bulkWrite(operation);
-  }
-  await redisClient.del("click_count");
 });

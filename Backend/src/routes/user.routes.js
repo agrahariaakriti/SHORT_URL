@@ -13,4 +13,4 @@ userroute.post("/signup", signup);
 
 userroute.post("/signin", signin);
 userroute.get("/refresh", refresh);
-userroute.get("/logout", tokenvarify_middleware, logout);
+userroute.get("/logout", logout);
