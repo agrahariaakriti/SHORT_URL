@@ -60,7 +60,7 @@ export const logout = async (req, res) => {
     };
     await user_logout_srv(req.cookies.refreshToken);
     return res
-      .clearCookie("accessToken", options)
+      .clearCookie("accessToken", option)
       .json({ msg: "User loggout SuccessFully" });
   } catch (error) {
     return res
@@ -71,21 +71,22 @@ export const logout = async (req, res) => {
 
 export const refresh = async (req, res) => {
   try {
+    const option = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+    };
+
     const refreshToken = req.cookies.refreshToken;
     if (!refreshToken) {
       return res.status(401).json({ msg: "Unauthorized No Token Found" });
     }
     const accessToken = await refresh_handler_srv(refreshToken);
-    return res
-      .cookie("accessToken", accessToken, {
-        httpOnly: true,
-        secure: false,
-        sameSite: "lax",
-      })
-      .json({
-        msg: "Token refreshed successfully",
-        accessToken: accessToken,
-      });
+    return res.cookie("accessToken", option, accessToken).json({
+      msg: "Token refreshed successfully",
+      accessToken: accessToken,
+    });
   } catch (error) {
     return res
       .status(error.statusCode)
