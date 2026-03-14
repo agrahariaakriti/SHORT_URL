@@ -34,11 +34,10 @@ export const signin = async (req, res) => {
     const user = await find_user_srv(email, password);
     const option = {
       httpOnly: true,
-      secure: false,
-      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       path: "/",
     };
-
     return res
       .status(200)
       .cookie("accessToken", user.accessToken, option)
@@ -53,13 +52,12 @@ export const signin = async (req, res) => {
 
 export const logout = async (req, res) => {
   try {
-    const options = {
+    const option = {
       httpOnly: true,
-      secure: false,
-      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       path: "/",
     };
-
     await user_logout_srv(req.cookies.refreshToken);
     return res
       .clearCookie("accessToken", options)
