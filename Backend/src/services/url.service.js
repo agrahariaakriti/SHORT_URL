@@ -78,6 +78,7 @@ export const get_longul_srv = async (code) => {
 
     if (redisUrl) {
       try {
+        console.log("Incrementing click count in Redis for code:", code);
         const res = await redisClient.hincrby("click_count", code, 1);
       } catch (err) {
         console.error("Redis increment error:", err.message);
@@ -135,7 +136,7 @@ export const get_clicks_srv = async (code) => {
 /* ------------------ CRON JOB ------------------ */
 /* Persist Redis click counts to MongoDB every 3 minutes */
 
-cron.schedule("*/3 * * * *", async () => {
+cron.schedule("*/10 * * * *", async () => {
   try {
     console.log("Running click sync cron job...");
 
