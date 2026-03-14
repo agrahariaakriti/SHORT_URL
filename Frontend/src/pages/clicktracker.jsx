@@ -124,7 +124,7 @@ const ClickTracker = () => {
                   <h3 className="text-xl font-semibold mb-6">Click Activity</h3>
 
                   <div className="h-48 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-gray-500">
-                    Click timeline graph will appear here
+                    Click timeline graph will appear here...(developing 😊)
                   </div>
                 </div>
               </div>
