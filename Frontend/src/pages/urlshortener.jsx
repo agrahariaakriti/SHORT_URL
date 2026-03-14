@@ -1,157 +1,146 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
-import api from "../stores/api.js";
-import Navbar from "./navbar.jsx";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import Navbar from "./navbar";
+import CountUp from "react-countup";
+import api from "../stores/api";
 
-const Shortener = () => {
-  const navigate = useNavigate();
-
+const ClickTracker = () => {
   const [url, setUrl] = useState("");
-  const [shortUrl, setShortUrl] = useState("");
-  const [error, setError] = useState(""); // added
+  const [clicks, setClicks] = useState(null);
+  const [error, setError] = useState("");
+  const [tracking, setTracking] = useState(false);
 
-  const handleShorten = async (e) => {
-    e.preventDefault();
+  const fetchClicks = async () => {
+    const code = url.split("/").pop();
+
+    if (!code) {
+      setError("Please enter a valid short URL");
+      setClicks(null);
+      return;
+    }
 
     try {
-      const response = await api.post("/url/shorturl", { url });
-      console.log(response);
-
-      setShortUrl(response.data.shorturl);
       setError("");
+      const response = await api.get(`/url/clicks/${code}`);
+      setClicks(response.data.count);
     } catch (err) {
       const message =
         err?.response?.data?.msg ||
         err?.response?.data?.error ||
         "Something went wrong";
-      console.log("Message in shorten handler is ", message);
-      if (message == "Unauthorized" || message == "Token Expired") {
+
+      if (message === "Unauthorized" || message === "Token Expired") {
         const res = await api.get("/user/refresh");
-        if (res.data.msg == "Invalid Refresh Token") navigate("/signin");
+        if (res.data.msg === "Invalid Refresh Token") navigate("/signin");
         else handleShorten(e);
-      } else {
-        setError(message);
       }
+
+      setError("Unable to fetch clicks. Check your link.");
+      setClicks(null);
     }
   };
 
-  const handleRedirect = async (e) => {
-    e.preventDefault();
-
-    try {
-      const code = shortUrl.split("/").pop();
-      console.log("Code .....", code);
-
-      const data = await api.get(`/url/${code}`);
-      console.log("hyyy babay ....", data);
-
-      window.open(data.data.longurl, "_blank");
-      setError("");
-    } catch (err) {
-      const message =
-        err?.response?.data?.msg ||
-        err?.response?.data?.error ||
-        "Something went wrong";
-      console.log("Message in shorten handler is ", message);
-      if (message == "Unauthorized" || message == "Token Expired") {
-        const res = await api.get("/user/refresh");
-        if (res.data.msg == "Invalid Refresh Token") navigate("/signin");
-        else handleShorten(e);
-      } else {
-        setError(message);
-      }
-    }
+  const handleTrack = async () => {
+    await fetchClicks();
+    setTracking(true);
   };
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(shortUrl);
-  };
+  useEffect(() => {
+    if (!tracking) return;
+
+    const interval = setInterval(fetchClicks, 5000);
+    return () => clearInterval(interval);
+  }, [tracking, url]);
 
   return (
     <div className="min-h-screen bg-black text-white relative overflow-hidden flex flex-col">
-      {/* Grid Background */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:40px_40px]" />
-
-      {/* Glow */}
-      <div className="absolute w-[700px] h-[700px] bg-indigo-600/30 blur-[200px] rounded-full top-[-250px] left-[30%]" />
-
-      {/* Navbar */}
       <Navbar />
 
-      {/* Main Section */}
-      <div className="relative z-10 flex flex-1 items-center justify-center px-6">
-        <div className="max-w-3xl w-full p-px rounded-2xl bg-linear-to-r from-indigo-500 via-purple-500 to-cyan-500">
-          <div className="bg-black/90 backdrop-blur-xl rounded-2xl p-10">
-            <h2 className="text-4xl font-bold text-center mb-4">
-              Shorten Your URL
-            </h2>
+      {/* grid background */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:40px_40px]" />
 
-            <p className="text-gray-400 text-center mb-8">
-              Paste your long URL below and generate a short link instantly
-            </p>
+      {/* glow background */}
+      <div className="absolute w-[300px] sm:w-[450px] md:w-[700px] h-[300px] sm:h-[450px] md:h-[700px] bg-indigo-600/30 blur-[160px] rounded-full top-[-150px] left-1/2 -translate-x-1/2" />
 
-            {/* Error Alert */}
-            {error && (
-              <div className="mb-4 bg-red-500/10 border border-red-500 text-red-400 text-sm px-4 py-2 rounded-lg">
-                {error}
+      <div className="relative z-10 flex flex-col items-center px-4 sm:px-6 py-12 sm:py-20 w-full">
+        <div className="w-full max-w-5xl">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4 text-center">
+            Click <span className="text-indigo-400">Tracker</span>
+          </h1>
+
+          <p className="text-gray-400 text-center mb-8 sm:mb-12 text-sm sm:text-base">
+            Paste your short link to see how many people have visited it.
+          </p>
+
+          {/* input card */}
+          <div className="p-[1px] rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 mb-8 sm:mb-12">
+            <div className="bg-black/90 backdrop-blur-xl rounded-2xl p-4 sm:p-8">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  placeholder="Paste your short link here..."
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  className="flex-1 px-4 py-3 rounded-lg bg-black border border-white/10 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 outline-none text-sm sm:text-base break-all"
+                />
+
+                <button
+                  className="px-6 py-3 rounded-lg bg-indigo-500 hover:bg-indigo-600 transition font-semibold w-full sm:w-auto"
+                  onClick={handleTrack}
+                >
+                  Track
+                </button>
               </div>
-            )}
 
-            {/* Form */}
-            <form
-              onSubmit={handleShorten}
-              className="flex flex-col md:flex-row gap-4"
-            >
-              <input
-                type="url"
-                placeholder="Paste your long URL here..."
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                required
-                className="flex-1 px-4 py-3 rounded-lg bg-black border border-white/10 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 outline-none"
-              />
+              <p className="text-gray-500 text-xs sm:text-sm mt-3 break-all">
+                Example: https://shortlink.io/abc123
+              </p>
+            </div>
+          </div>
 
-              <button
-                type="submit"
-                className="px-6 py-3 rounded-lg bg-indigo-500 hover:bg-indigo-600 transition font-semibold"
-              >
-                Shorten
-              </button>
-            </form>
+          {error && (
+            <p className="text-red-500 text-center mb-6 text-sm">{error}</p>
+          )}
 
-            {/* Result */}
-            {shortUrl && (
-              <div className="mt-8 bg-black border border-white/10 rounded-xl p-5 flex flex-col md:flex-row items-center justify-between gap-4">
-                <span className="text-indigo-400 break-all">{shortUrl}</span>
+          {clicks !== null && (
+            <>
+              {/* stats */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 mb-10">
+                <div className="p-5 sm:p-6 rounded-xl bg-white/5 border border-white/10">
+                  <p className="text-gray-400 text-sm">Total Clicks</p>
+                  <p className="text-3xl font-bold text-indigo-400 mt-2">
+                    <CountUp end={clicks} duration={1.5} />
+                  </p>
+                </div>
 
-                <div className="flex items-center gap-5">
-                  <button
-                    onClick={copyToClipboard}
-                    className="px-5 py-2 rounded-lg bg-green-500 hover:bg-green-600 transition font-medium"
-                  >
-                    Copy
-                  </button>
+                <div className="p-5 sm:p-6 rounded-xl bg-white/5 border border-white/10">
+                  <p className="text-gray-400 text-sm">Clicks Today</p>
+                  <p className="text-3xl font-bold text-indigo-400 mt-2">--</p>
+                </div>
 
-                  <button
-                    onClick={handleRedirect}
-                    className="px-5 py-2 rounded-lg bg-green-500 hover:bg-green-600 transition font-medium"
-                  >
-                    Redirect To
-                  </button>
+                <div className="p-5 sm:p-6 rounded-xl bg-white/5 border border-white/10">
+                  <p className="text-gray-400 text-sm">Last Click</p>
+                  <p className="text-3xl font-bold text-indigo-400 mt-2">--</p>
                 </div>
               </div>
-            )}
-          </div>
+
+              {/* graph section */}
+              <div className="p-[1px] rounded-2xl bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 mb-10">
+                <div className="bg-black/90 rounded-2xl p-5 sm:p-8">
+                  <h3 className="text-lg sm:text-xl font-semibold mb-6">
+                    Click Activity
+                  </h3>
+
+                  <div className="h-36 sm:h-48 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center text-gray-500 text-xs sm:text-sm text-center px-4">
+                    Click timeline graph will appear here...(developing 😊)
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
-
-      {/* Footer */}
-      <footer className="relative z-10 text-center py-6 text-gray-400 text-sm border-t border-white/10">
-        © {new Date().getFullYear()} ShortLink
-      </footer>
     </div>
   );
 };
 
-export default Shortener;
+export default ClickTracker;
